@@ -94,3 +94,27 @@ test('canvas monuments open project details by raycasting', async ({ page }) => 
   expect(found).toBe(true);
   await expect(page.getByRole('dialog')).toBeVisible();
 });
+
+test('crypt opens before revealing content and closes after dismissing it', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-project="rinku"]').click();
+  await expect(page.locator('#world')).toHaveAttribute('data-phase', 'opening');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('#world')).toHaveAttribute('data-phase', 'open');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#world')).toHaveAttribute('data-phase', 'closing');
+  await expect(page.locator('#world')).toHaveAttribute('data-phase', 'idle');
+});
+
+test('Escape cancels an opening and another project can be selected', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('[data-project="rinku"]').click();
+  await expect(page.locator('#world')).toHaveAttribute('data-phase', 'opening');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#world')).toHaveAttribute('data-phase', 'idle');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await page.locator('[data-project="smartnotes"]').click();
+  await expect(page.locator('#dialog-title')).toHaveText('SmartNotes');
+  await expect(page.getByRole('dialog')).toBeVisible();
+});

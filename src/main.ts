@@ -9,6 +9,17 @@ const resetButton = document.getElementById('view-reset') as HTMLButtonElement;
 const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 let paused = motionQuery.matches;
 let world: ReturnType<typeof createScene> | undefined;
+let opening = false;
+
+function selectProject(id: string) {
+  if (opening || dialog.open) return;
+  const show = () => { opening = false; openProject(id); };
+  if (!world) { show(); return; }
+  if (document.getElementById('world')!.dataset.phase === 'open') world.closeProject();
+  world.setPaused(paused);
+  opening = true;
+  if (!world.openProject(id, show)) opening = false;
+}
 
 function artwork(project: Project) {
   if (project.id === 'chatlaunch') {
@@ -48,6 +59,7 @@ function openProject(id: string) {
     if (image) image.src = '/images/chatlaunch-still.png';
   }
   dialog.showModal();
+  dialog.classList.toggle('still', paused);
   document.body.style.overflow = 'hidden';
   world?.setPaused(true);
 }
@@ -59,7 +71,7 @@ projects.forEach((project, index) => {
   card.setAttribute('aria-label', `Explore ${project.name}: ${project.summary}`);
   card.setAttribute('aria-haspopup', 'dialog');
   card.innerHTML = `<div class="card-top"><span class="project-symbol" aria-hidden="true">${project.symbol}</span><span class="project-number">0${index + 1}</span></div><h3>${project.name}</h3><p>${project.summary}</p><div class="card-bottom"><span>${project.kind.split(' / ')[0]} / ${project.id === 'smartnotes' ? 'FLUTTER' : project.id === 'chatlaunch' ? 'ANDROID' : 'KOTLIN MULTIPLATFORM'}</span><span class="card-arrow" aria-hidden="true">↗</span></div>`;
-  card.addEventListener('click', () => openProject(project.id));
+  card.addEventListener('click', () => selectProject(project.id));
   card.addEventListener('pointerenter', () => world?.highlight(project.id));
   card.addEventListener('pointerleave', () => world?.highlight(null));
   card.addEventListener('focus', () => world?.highlight(project.id));
@@ -76,9 +88,13 @@ dialog.addEventListener('click', event => {
 dialog.addEventListener('close', () => {
   // A queued close event must not affect a newly opened project.
   // The native dialog already restores focus to its original trigger.
-  if (dialog.open) return;
+  if (dialog.open || opening) return;
   document.body.style.overflow = '';
   world?.setPaused(paused);
+  world?.closeProject();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && opening) { opening = false; world?.closeProject(); }
 });
 
 function updateMotionButton() {
@@ -96,7 +112,7 @@ updateMotionButton();
 try {
   world = createScene(document.getElementById('world')!, {
     reducedMotion: paused,
-    onSelect: openProject,
+    onSelect: selectProject,
     onHover(id) {
       document.querySelectorAll<HTMLButtonElement>('.project-card').forEach(card => card.classList.toggle('is-hovered', card.dataset.project === id));
     },

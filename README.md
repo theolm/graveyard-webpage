@@ -33,7 +33,9 @@ The ChatLaunch demo is sourced from the project's public README (`theolm/WhatsAp
 
 ## Interaction and accessibility
 
-Click a monument or a project card to open details. Drag the scene to adjust the view; use the reset button to restore the camera. No sound, forced camera travel, or scroll interception. Native dialogs support Escape, focus trapping, and focus restoration. Keyboard users can reach all projects through the HTML cards. Reduced-motion preferences disable scene animation and use a static ChatLaunch image. A manual pause button is also available. If WebGL is unavailable, the complete HTML project list still works.
+Click a monument or a project card to open details. Drag the scene to adjust the view; use the reset button to restore the camera. No sound or scroll interception. Native dialogs support Escape, focus trapping, and focus restoration. Keyboard users can reach all projects through the HTML cards. Reduced-motion preferences disable scene animation and use a static ChatLaunch image. A manual pause button is also available. If WebGL is unavailable, the complete HTML project list still works.
+
+The living garden includes a jointed conducting arm and swinging legs, flickering candlelight, drifting ground fog, occasional voxel ghosts, and a raven that looks around and flies between perches. Selecting a project starts a 1.15-second crypt-opening sequence: the conductor gestures, the camera approaches, the stone slides aside, and light and vapor escape before the details appear. Closing restores the previous camera view over 0.8 seconds. Escape also cancels an opening. Paused and reduced-motion modes skip the transition. Ambient motion pauses while project details are open.
 
 ## Visual direction
 

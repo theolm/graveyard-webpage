@@ -131,7 +131,25 @@ function makeConductor(parent: THREE.Object3D, geometry: THREE.BoxGeometry) {
     m.box(x, 1.93 + i * .105, -.12, .12 + i * .012, .14, .1, i % 3 === 0 ? '#4b4a43' : '#303539');
     if (i > 3) m.box(x + .12, 1.93 + i * .105, -.12, .14, .06, .08, '#383b3a');
   }
+  const arm = new THREE.Group();
+  arm.position.set(.35, .68, 0);
+  const leftLeg = new THREE.Group();
+  leftLeg.position.set(-.21, -.08, .25);
+  const rightLeg = new THREE.Group();
+  rightLeg.position.set(.21, -.04, .24);
+  for (const [joint, predicate] of [
+    [arm, (v: Voxel) => v.x > .34 && v.y > .2],
+    [leftLeg, (v: Voxel) => v.x < 0 && v.y < -.2],
+    [rightLeg, (v: Voxel) => v.x > 0 && v.y < -.2],
+  ] as const) {
+    const part = new VoxelModel();
+    part.voxels = m.voxels.filter(predicate).map(v => ({ ...v, x: v.x - joint.position.x, y: v.y - joint.position.y, z: v.z - joint.position.z }));
+    m.voxels = m.voxels.filter(v => !predicate(v));
+    part.build(joint, geometry);
+    parent.add(joint);
+  }
   m.build(parent, geometry);
+  return { arm, leftLeg, rightLeg };
 }
 
 function plaque(parent: THREE.Object3D, text: string, width: number, y: number, z: number) {
@@ -268,10 +286,11 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
   conductor.position.set(1.1, 2.7, -2.5);
   conductor.rotation.y = -.12;
   conductor.scale.setScalar(.85);
-  makeConductor(conductor, geometry);
+  const conductorRig = makeConductor(conductor, geometry);
   island.add(conductor);
 
   const monuments = new Map<string, THREE.Group>();
+  const crypts = new Map<string, { lid: THREE.Group; glow: THREE.PointLight; mist: THREE.Group }>();
   const pickables: THREE.Object3D[] = [];
   const locations = [[-2, -.65], [1.95, -.55], [-1.95, 1.55], [1.95, 1.65]];
   projects.forEach((project, index) => {
@@ -329,7 +348,27 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
       for (let i = 0; i < 3; i++) m.box(0, .81 + i * .09, .16, .23, .023, .02, '#b4b9a8');
       plaque(group, 'KMP-RECORD', 1.02, .23, .58);
     }
+    const lid = new THREE.Group();
+    const lidModel = new VoxelModel();
+    lidModel.voxels = m.voxels.filter(v => v.y > .32);
+    m.voxels = m.voxels.filter(v => v.y <= .32);
+    // Carry engraved plaques with the opening stone.
+    [...group.children].forEach(child => { if (child.position.y > .32) lid.add(child); });
+    lidModel.build(lid, geometry);
+    group.add(lid);
+    m.box(0, .33, -.1, .78, .035, .59, '#182726');
     m.build(group, geometry);
+    const glow = new THREE.PointLight(project.accent, 0, 4);
+    glow.position.set(0, .65, .15);
+    group.add(glow);
+    const vapor = new THREE.Group();
+    for (let i = 0; i < 9; i++) {
+      const puff = new THREE.Mesh(new THREE.BoxGeometry(.16, .16, .16), new THREE.MeshBasicMaterial({ color: project.accent, transparent: true, opacity: 0, depthWrite: false }));
+      puff.position.set(Math.sin(i * 3) * .4, .5 + i * .12, Math.cos(i * 4) * .3);
+      vapor.add(puff);
+    }
+    group.add(vapor);
+    crypts.set(project.id, { lid, glow, mist: vapor });
     const hitbox = new THREE.Mesh(new THREE.BoxGeometry(1.45, 2.25, 1.2), new THREE.MeshBasicMaterial({ visible: false }));
     hitbox.position.y = 1.1;
     hitbox.userData.project = project.id;
@@ -364,6 +403,51 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
   }
   candles.build(island, geometry);
 
+  const ghosts = locations.map(([x, z], index) => {
+    const ghost = new THREE.Group();
+    const model = new VoxelModel();
+    model.box(0, .3, 0, .36, .48, .26, '#b6d3c7');
+    model.box(0, .58, 0, .25, .09, .22, '#b6d3c7');
+    for (const side of [-1, 1]) {
+      model.box(side * .24, .3, 0, .16, .12, .18, '#b6d3c7');
+      model.box(side * .1, .04, 0, .09, .17, .22, '#b6d3c7');
+      model.box(side * .085, .41, .14, .065, .09, .025, '#203b3b');
+    }
+    model.build(ghost, geometry);
+    ghost.traverse(child => {
+      if (child instanceof THREE.InstancedMesh) {
+        const material = child.material as THREE.MeshStandardMaterial;
+        material.transparent = true; material.opacity = 0; material.depthWrite = false;
+        material.emissive.set('#739e90'); material.emissiveIntensity = .4;
+        child.castShadow = false;
+      }
+    });
+    ghost.position.set(x, .2, z - .55);
+    island.add(ghost);
+    return { ghost, x, z, offset: index * 5 };
+  });
+
+  const raven = new THREE.Group();
+  const ravenBody = new VoxelModel();
+  ravenBody.box(0, .14, 0, .24, .25, .36, '#171f2b');
+  ravenBody.box(0, .08, -.25, .18, .09, .28, '#222a36');
+  for (const side of [-1, 1]) ravenBody.box(side * .07, -.03, .05, .035, .14, .12, '#9a9276');
+  ravenBody.build(raven, geometry);
+  const ravenHead = new THREE.Group();
+  ravenHead.position.set(0, .34, .09);
+  const head = new VoxelModel();
+  head.box(0, 0, 0, .23, .22, .23, '#202a37');
+  head.box(0, -.025, .17, .1, .065, .18, '#8d907b');
+  for (const side of [-1, 1]) head.box(side * .12, .025, .055, .025, .035, .035, '#d3c2a1');
+  head.build(ravenHead, geometry); raven.add(ravenHead);
+  const wings = [-1, 1].map(side => {
+    const wing = new THREE.Group(); wing.position.set(side * .12, .19, 0);
+    const model = new VoxelModel();
+    model.box(side * .1, 0, -.03, .24, .065, .34, '#303b49');
+    model.build(wing, geometry); raven.add(wing); return wing;
+  });
+  raven.position.set(-1.1, 2.7, -2.65); island.add(raven);
+
   const moteGeometry = new THREE.BufferGeometry();
   const motePositions = new Float32Array(50 * 3);
   for (let i = 0; i < 50; i++) {
@@ -381,7 +465,7 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
     fragmentShader: `varying vec2 vUv; uniform float time;
       void main(){ vec2 p=vUv; float edge=smoothstep(.5,.08,length((p-.5)*vec2(1.,1.25)));
       float w=sin(p.x*18.+p.y*9.+time*.12)*sin(p.y*23.-p.x*8.-time*.09);
-      float mist=pow(max(0.,w*.5+.5),3.); gl_FragColor=vec4(.48,.57,.57,mist*edge*.12); }`,
+      float mist=pow(max(0.,w*.5+.5),2.); gl_FragColor=vec4(.56,.65,.65,mist*edge*.32); }`,
   });
   const mist = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), fogMaterial);
   mist.rotation.x = -Math.PI / 2; mist.position.y = .37; scene.add(mist);
@@ -394,6 +478,45 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
   let previousTime = 0;
   let lastRender = -Infinity;
   let dirty = true;
+  let selected: string | null = null;
+  let transition: { opening: boolean; time: number; start: number; done?: () => void } | null = null;
+  let reveal = 0;
+  const savedCamera = new THREE.Vector3();
+  const savedTarget = new THREE.Vector3();
+  const savedZoom = { value: 1 };
+
+  function applyReveal(value: number) {
+    if (!selected) return;
+    const group = monuments.get(selected)!;
+    const crypt = crypts.get(selected)!;
+    crypt.lid.position.set(value * .48, value * .12, -value * .65);
+    crypt.lid.rotation.y = -value * .18;
+    crypt.glow.intensity = value * 12;
+    crypt.mist.children.forEach((child, i) => {
+      child.position.y = .45 + ((i * .13 + value * 1.4) % 1.5);
+      (child as THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>).material.opacity = value * .24;
+    });
+    const target = group.position.clone().add(new THREE.Vector3(0, 1, 0));
+    controls.target.lerpVectors(savedTarget, target, value * .65);
+    camera.position.copy(savedCamera).add(controls.target.clone().sub(savedTarget));
+    camera.zoom = THREE.MathUtils.lerp(savedZoom.value, 1.5, value);
+    camera.updateProjectionMatrix(); controls.update();
+    conductorRig.arm.rotation.z = -.95 * value;
+    conductorRig.arm.rotation.x = -.9 * value;
+    conductorRig.arm.rotation.y = Math.atan2(group.position.x - conductor.position.x, group.position.z - conductor.position.z) * value;
+    dirty = true;
+  }
+
+  function finishTransition() {
+    if (!transition) return;
+    const completed = transition;
+    reveal = completed.opening ? 1 : 0;
+    applyReveal(reveal);
+    transition = null;
+    if (!completed.opening) { selected = null; controls.enabled = true; }
+    container.dataset.phase = completed.opening ? 'open' : 'idle';
+    completed.done?.();
+  }
   let dragging = false;
   let pointerDown: { x: number; y: number } | null = null;
   const raycaster = new THREE.Raycaster();
@@ -435,7 +558,7 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
   }
   function onDown(event: PointerEvent) { pointerDown = { x: event.clientX, y: event.clientY }; dragging = false; }
   function onUp(event: PointerEvent) {
-    if (pointerDown && !dragging && Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) < 6) {
+    if (!selected && pointerDown && !dragging && Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) < 6) {
       const id = hitTest(event);
       if (id) { setHover(null); options.onSelect(id); }
     }
@@ -470,15 +593,50 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
     if (!active) return;
     const delta = previousTime ? Math.min((time - previousTime) / 1000, .05) : 0;
     previousTime = time;
+    if (transition) {
+      transition.time += delta;
+      const progress = Math.min(transition.time / (transition.opening ? 1.15 : .8), 1);
+      const eased = progress * progress * (3 - 2 * progress);
+      reveal = THREE.MathUtils.lerp(transition.start, transition.opening ? 1 : 0, eased);
+      applyReveal(reveal);
+      if (progress === 1) finishTransition();
+    }
     if (!visible || document.hidden) return;
     if (!paused) {
       elapsed += delta;
       fogMaterial.uniforms.time.value = elapsed;
+      mist.position.x = Math.sin(elapsed * .18) * .6;
+      mist.position.z = Math.cos(elapsed * .13) * .5;
+      if (!selected) {
+        conductorRig.arm.rotation.z = Math.sin(elapsed * 1.5) * .3;
+        conductorRig.arm.rotation.x = Math.sin(elapsed * 1.5 + .8) * .35;
+      }
+      conductorRig.leftLeg.rotation.x = Math.sin(elapsed * 1.8) * .22;
+      conductorRig.rightLeg.rotation.x = Math.sin(elapsed * 1.8 + 1.8) * .22;
+      for (const { ghost, x, z, offset } of ghosts) {
+        const cycle = (elapsed + offset) % 22;
+        const amount = cycle < 6 ? Math.sin(cycle / 6 * Math.PI) : 0;
+        ghost.visible = amount > .01;
+        ghost.position.set(x + Math.sin(elapsed * .8 + offset) * .18, .15 + amount * 1.8, z - .55);
+        ghost.rotation.y = Math.sin(elapsed + offset) * .25;
+        ghost.traverse(child => { if (child instanceof THREE.InstancedMesh) (child.material as THREE.MeshStandardMaterial).opacity = amount * .65; });
+      }
+      const flight = elapsed % 18;
+      const flightProgress = Math.min(Math.max((flight - 14) / 2, 0), 1);
+      const reverse = Math.floor(elapsed / 18) % 2 === 1;
+      const travel = reverse ? 1 - flightProgress : flightProgress;
+      raven.position.set(THREE.MathUtils.lerp(-1.1, -3.3, travel), 2.7 - travel * 1.3 + Math.sin(flightProgress * Math.PI) * 1.1, -2.65);
+      ravenHead.rotation.y = Math.sin(elapsed * .9) * .6;
+      wings.forEach((wing, i) => { wing.rotation.z = (i ? 1 : -1) * (flightProgress > 0 && flightProgress < 1 ? Math.sin(elapsed * 20) * .9 : -.8); });
+      for (const [id, group] of monuments) {
+        if (id !== selected) group.rotation.z = id === hovered ? Math.sin(elapsed * 24) * .008 : 0;
+      }
       motes.position.y = Math.sin(elapsed * .2) * .14;
       motes.rotation.y = Math.sin(elapsed * .04) * .05;
       flames.forEach(({ mesh, light, phase }) => {
-        const flicker = Math.sin(elapsed * 4 + phase) * .08 + Math.sin(elapsed * 7.3 + phase) * .035;
+        const flicker = Math.sin(elapsed * 4 + phase) * .19 + Math.sin(elapsed * 7.3 + phase) * .09;
         mesh.scale.y = 1 + flicker;
+        mesh.rotation.z = Math.sin(elapsed * 3 + phase) * .15;
         light.intensity = 3 + flicker * 5;
       });
     }
@@ -493,9 +651,26 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
   document.getElementById('world-status')!.classList.add('is-ready');
 
   return {
-    setPaused(value: boolean) { paused = value; dirty = true; },
+    openProject(id: string, done: () => void) {
+      if (transition && !transition.opening) finishTransition();
+      if (selected || !monuments.has(id)) return false;
+      selected = id; setHover(null); controls.enabled = false;
+      monuments.get(id)!.rotation.z = 0;
+      savedCamera.copy(camera.position); savedTarget.copy(controls.target); savedZoom.value = camera.zoom;
+      transition = { opening: true, time: 0, start: 0, done };
+      container.dataset.phase = 'opening';
+      if (paused) finishTransition();
+      return true;
+    },
+    closeProject() {
+      if (!selected) return;
+      transition = { opening: false, time: 0, start: reveal };
+      container.dataset.phase = 'closing';
+      if (paused) finishTransition();
+    },
+    setPaused(value: boolean) { paused = value; dirty = true; if (paused) finishTransition(); },
     highlight(id: string | null) { setHover(id); if (id) tooltip.classList.remove('visible'); },
-    reset() { camera.position.copy(initialCamera); controls.target.set(0, 1.35, 0); controls.update(); },
+    reset() { if (selected) return; camera.position.copy(initialCamera); controls.target.set(0, 1.35, 0); controls.update(); },
     dispose() {
       active = false;
       renderer.setAnimationLoop(null);
