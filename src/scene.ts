@@ -594,8 +594,8 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
     const delta = previousTime ? Math.min((time - previousTime) / 1000, .05) : 0;
     previousTime = time;
     if (transition) {
-      transition.time += delta;
-      const progress = Math.min(transition.time / (transition.opening ? 1.15 : .8), 1);
+      // Transitions follow wall-clock time even when software rendering drops frames.
+      const progress = Math.min((performance.now() - transition.time) / (transition.opening ? 1150 : 800), 1);
       const eased = progress * progress * (3 - 2 * progress);
       reveal = THREE.MathUtils.lerp(transition.start, transition.opening ? 1 : 0, eased);
       applyReveal(reveal);
@@ -657,14 +657,14 @@ export function createScene(container: HTMLElement, options: SceneOptions) {
       selected = id; setHover(null); controls.enabled = false;
       monuments.get(id)!.rotation.z = 0;
       savedCamera.copy(camera.position); savedTarget.copy(controls.target); savedZoom.value = camera.zoom;
-      transition = { opening: true, time: 0, start: 0, done };
+      transition = { opening: true, time: performance.now(), start: 0, done };
       container.dataset.phase = 'opening';
       if (paused) finishTransition();
       return true;
     },
     closeProject() {
       if (!selected) return;
-      transition = { opening: false, time: 0, start: reveal };
+      transition = { opening: false, time: performance.now(), start: reveal };
       container.dataset.phase = 'closing';
       if (paused) finishTransition();
     },
